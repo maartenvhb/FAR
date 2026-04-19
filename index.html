@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#234d38">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'; upgrade-insecure-requests; base-uri 'self';">
+    <meta name="robots" content="index,follow">
+    <title>FAR Analysis Tool — Field Anomaly Relaxation</title>
+    <meta name="description" content="Field Anomaly Relaxation (FAR) — a systematic method for exploring alternative futures. Interactive scenario tool.">
+    <link rel="stylesheet" href="css/style.css?v=2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Top navigation bar -->
+        <header class="top-bar">
+            <div class="top-bar-brand">
+                <span class="brand-icon">&#9670;</span>
+                <span class="brand-text">FAR Analysis Tool</span>
+            </div>
+            <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation">
+                <span></span><span></span><span></span>
+            </button>
+            <div class="top-bar-collapsible" id="top-bar-collapsible">
+                <nav class="top-bar-nav">
+                    <button class="nav-btn active" data-step="0">Welcome</button>
+                    <button class="nav-btn" data-step="1">1. Initial View</button>
+                    <button class="nav-btn" data-step="2">2. Sectors &amp; Factors</button>
+                    <button class="nav-btn" data-step="3">3. Filtering</button>
+                    <button class="nav-btn" data-step="4">4. Scenario Composition</button>
+                    <button class="nav-btn" data-step="5">5. Report</button>
+                </nav>
+                <div class="top-bar-actions">
+                    <button id="btn-assisted" class="btn-assisted" style="display:none" title="Re-run AI, updating only what changed">AI Analyst &rarr;</button>
+                    <button id="btn-save" class="action-btn" title="Save project to file">&#128190; Save</button>
+                    <div class="action-dropdown">
+                        <button class="action-btn" id="btn-load-trigger">&#128194; Load</button>
+                        <div class="action-dropdown-menu">
+                            <div class="action-dropdown-menu-inner">
+                                <button class="action-dropdown-item" id="btn-load">Load from File</button>
+                                <button class="action-dropdown-item" id="btn-load-example">Load Example</button>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="btn-restart" class="action-btn action-btn-danger" title="Start a new project from scratch">Restart</button>
+                </div>
+            </div>
+        </header>
+        <input type="file" id="file-load" accept=".far.json" class="sr-only">
+
+        <!-- Progress indicator -->
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+
+        <!-- ===================== STEP 0: WELCOME ===================== -->
+        <section class="step-panel active" data-step="0">
+            <div class="welcome-hero">
+                <h1 class="welcome-title">Field Anomaly Relaxation</h1>
+                <p class="welcome-subtitle">A Systematic Method for Exploring Alternative Futures</p>
+            </div>
+            <div class="content-card welcome-content">
+                <div class="info-block">
+                    <h2>What is FAR?</h2>
+                    <p><strong>Field Anomaly Relaxation (FAR)</strong> is a strategic foresight methodology created by <strong>Russell Rhyne</strong> at the Stanford Research Institute in <strong>1971</strong>. It provides a rigorous, iterative approach for generating internally consistent, plausible future scenarios.</p>
+                    <p>FAR combines three intellectual traditions (Rhyne, 1995):</p>
+                    <ul>
+                        <li><strong>Kurt Lewin's Field Theory</strong> &mdash; societies exist within "fields" of interacting forces; factors are positioned in Lewinian adjacency maps</li>
+                        <li><strong>Fritz Zwicky's Morphological Analysis</strong> &mdash; a method for mapping all possible configurations of a problem space</li>
+                        <li><strong>Relaxation methods from engineering</strong> &mdash; iterative filtering that removes anomalous configurations until a coherent set remains</li>
+                    </ul>
+                </div>
+
+                <div class="info-block">
+                    <h2>The FAR Cycle</h2>
+                    <p>FAR is an <strong>iterative, cyclic</strong> process. Rhyne emphasizes that "at least two cycles are needed" to achieve reliable scenarios (Rhyne, 1995). Each cycle deepens understanding:</p>
+                    <div class="step-cards">
+                        <div class="step-card">
+                            <div class="step-number">1</div>
+                            <h3>Form a View of the Future</h3>
+                            <p>Begin with brainstorming &mdash; articulate initial visions, boundaries of the field, and key uncertainties. This "initial view" shapes the array construction.</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-number">2</div>
+                            <h3>Construct the Sector Array</h3>
+                            <p>Define 6&ndash;7 primary <span class="glossary-term" tabindex="0">sectors<span class="glossary-tip">A major dimension or driving force shaping the future (e.g., Economy, Technology, Governance).</span></span> with an identifying acronym (e.g., "ACTIVES"). Each sector contains mutually exclusive <span class="glossary-term" tabindex="0">factors<span class="glossary-tip">A possible state a sector could take &mdash; one of several alternative futures within that dimension.</span></span> representing possible future states.</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-number">3</div>
+                            <h3>Filter the Field</h3>
+                            <p><strong>Filter 1:</strong> Cross-Compatibility &mdash; "Can we think of a pattern within which these two factors might coexist?" <strong>Filter 2:</strong> Overall Plausibility &mdash; "Does this entire <span class="glossary-term" tabindex="0">configuration<span class="glossary-tip">One complete combination of factors &mdash; picking one possibility from each sector.</span></span> feel coherent as a whole?"</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-number">4</div>
+                            <h3>Compose Scenarios</h3>
+                            <p>String surviving configurations into temporal <span class="glossary-term" tabindex="0">scenario lines<span class="glossary-tip">A pathway through time &mdash; a sequence of configurations showing how the world might evolve step by step.</span></span> on the <span class="glossary-term" tabindex="0">Scenario Tree<span class="glossary-tip">A branching timeline diagram showing how scenarios diverge from a shared present into different futures.</span></span> &mdash; a branching timeline that diverges from a shared present. Score each configuration on <span class="glossary-term" tabindex="0">Commitment<span class="glossary-tip">How much this future narrows options through deliberate commitment (1=passive, 10=maximum commitment).</span></span> and <span class="glossary-term" tabindex="0">Freedom<span class="glossary-tip">How much diversity and remaining possibility this future allows (1=locked-in, 10=maximum freedom).</span></span>, and write narratives per scenario line.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-block">
+                    <h2>Getting Started</h2>
+                    <p>Give your project a name and optional description, then click <strong>"Begin Analysis"</strong> to start forming your initial view of the future.</p>
+                    <div class="form-group">
+                        <label for="project-name">Project Name</label>
+                        <input type="text" id="project-name" placeholder="e.g., Future of Urban Mobility 2040" class="input-lg">
+                    </div>
+                    <div class="form-group">
+                        <label for="project-desc">Project Description <span class="optional">(optional)</span></label>
+                        <textarea id="project-desc" rows="3" placeholder="Briefly describe the domain, time horizon, and purpose of this analysis..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="project-horizon">Time Horizon</label>
+                        <input type="text" id="project-horizon" placeholder="e.g., 2025–2045" class="input-md">
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="collect-warning-indicators">
+                            Collect <span class="glossary-term" tabindex="0">Warning Indicators<span class="glossary-tip">A concrete, observable event or trend that would signal a transition is underway.</span></span>
+                        </label>
+                        <p class="optional" style="margin-top:4px">
+                            During scenario composition, you'll be prompted to identify events or trends that signal each transition between configurations. This collects information that will help you identify when a potential future becomes more likely over time.
+                        </p>
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px">
+                        <label>Sector &amp; Factor Count (for AI Analyst)</label>
+                        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:4px">
+                            <label style="font-size:0.85rem;display:flex;align-items:center;gap:6px">
+                                Sectors:
+                                <select id="ai-sector-count" class="input-sm" style="width:60px">
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6" selected>6</option>
+                                    <option value="7">7</option>
+                                </select>
+                            </label>
+                            <label style="font-size:0.85rem;display:flex;align-items:center;gap:6px">
+                                Factors per sector:
+                                <select id="ai-factor-count" class="input-sm" style="width:60px">
+                                    <option value="2">2</option>
+                                    <option value="3" selected>3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                </select>
+                            </label>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                        <button class="btn-primary btn-lg" onclick="FAR.goToStep(1)">Begin Analysis &rarr;</button>
+                        <button class="btn-autopilot" id="btn-autopilot" disabled title="Run the complete FAR analysis end-to-end using AI">AI Analyst &rarr;</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="content-card welcome-content" style="margin-top:24px;background:#f0f4f3">
+                <div class="info-block">
+                    <h2>AI Analyst</h2>
+                    <p>Connect to a local <a href="https://ollama.com" target="_blank" rel="noopener noreferrer">Ollama</a> instance, the <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer">Claude API</a>, or the <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Gemini API</a> for AI-assisted brainstorming, CCM pre-scoring, warning indicators, and narrative drafting.</p>
+
+                    <div class="form-group">
+                        <label>Provider</label>
+                        <div class="ai-provider-toggle" id="ai-provider-toggle">
+                            <button class="ai-provider-btn active" data-provider="ollama">Ollama</button>
+                            <button class="ai-provider-btn" data-provider="claude">Claude API</button>
+                            <button class="ai-provider-btn" data-provider="gemini">Gemini API</button>
+                        </div>
+                    </div>
+
+                    <div id="ai-settings-ollama" data-provider-group="ollama">
+                        <div class="form-group">
+                            <label for="ai-ollama-url">Ollama URL</label>
+                            <input type="text" id="ai-ollama-url" value="http://localhost:11434" class="input-md" placeholder="http://localhost:11434">
+                        </div>
+                        <div class="form-group">
+                            <label for="ai-model-select">Model</label>
+                            <select id="ai-model-select" class="input-md" disabled>
+                                <option value="">No models available</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="ai-settings-claude" data-provider-group="claude" style="display:none">
+                        <div class="form-group">
+                            <label for="ai-claude-api-key">API Key</label>
+                            <input type="password" id="ai-claude-api-key" class="input-md" placeholder="sk-ant-...">
+                        </div>
+                        <div class="form-group">
+                            <label for="ai-claude-model-select">Model</label>
+                            <select id="ai-claude-model-select" class="input-md">
+                                <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                                <option value="claude-opus-4-6">Claude Opus 4.6</option>
+                                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                                <option value="claude-sonnet-4-5-20241022">Claude Sonnet 4.5</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="ai-settings-gemini" data-provider-group="gemini" style="display:none">
+                        <div class="form-group">
+                            <label for="ai-gemini-api-key">API Key</label>
+                            <input type="password" id="ai-gemini-api-key" class="input-md" placeholder="AIza...">
+                        </div>
+                        <div class="form-group">
+                            <label for="ai-gemini-model-select">Model</label>
+                            <select id="ai-gemini-model-select" class="input-md">
+                                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="ai-settings-row">
+                        <button class="btn-secondary btn-sm" id="ai-test-connection">Test Connection</button>
+                        <span id="ai-status" class="ai-status ai-status-disconnected">Not connected</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Filtering Strictness</label>
+                        <div class="ai-strictness-toggle" id="ai-strictness-toggle">
+                            <button class="ai-strictness-btn" data-strictness="permissive">Permissive</button>
+                            <button class="ai-strictness-btn active" data-strictness="balanced">Balanced</button>
+                            <button class="ai-strictness-btn" data-strictness="strict">Strict</button>
+                        </div>
+                        <p class="optional" style="margin-top:4px">Controls how aggressively the AI filters configurations. Strict yields fewer, more coherent survivors; Permissive keeps more exploratory options.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== STEP 1: INITIAL VIEW ===================== -->
+        <section class="step-panel" data-step="1">
+            <div class="step-header">
+                <div class="step-badge">Step 1</div>
+                <h2>Form a View of the Future</h2>
+            </div>
+            <div class="content-card">
+                <div class="info-block collapsible">
+                    <h3 class="collapsible-header">
+                        <span class="collapse-icon">&#9660;</span>
+                        About This Step
+                    </h3>
+                    <div class="collapsible-body">
+                        <p>Before constructing the formal array, Rhyne's methodology begins with a <strong>guided brainstorming</strong> phase. The purpose is to "form a view" &mdash; an initial, intuitive understanding of what the future field looks like (Rhyne, 1995, p. 3).</p>
+                        <p>This step asks you to:</p>
+                        <ul>
+                            <li><strong>Describe alternative visions</strong> &mdash; What are the different futures you can imagine for this domain?</li>
+                            <li><strong>Define the field boundaries</strong> &mdash; What is included and what is excluded from your analysis?</li>
+                            <li><strong>Identify key uncertainties</strong> &mdash; What are the major unknowns that could shape the future?</li>
+                        </ul>
+                        <p>Don't aim for perfection &mdash; aim for breadth. The formal structure comes in Step 2.</p>
+                        <p><em>"The first step in a FAR study is to form a view of what you are looking at... It is the essential first step in defining the initial sector array."</em> &mdash; Rhyne, 1995</p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="initial-view">Alternative Visions of the Future</label>
+                    <textarea id="initial-view" rows="8" placeholder="Describe the different futures you can imagine for this domain. What are the major possibilities? Think broadly about optimistic, pessimistic, and surprising outcomes..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="field-boundaries">Field Boundaries</label>
+                    <textarea id="field-boundaries" rows="4" placeholder="What is included in your analysis? What is explicitly excluded? What geographic, temporal, or domain limits apply?"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="key-uncertainties">Key Uncertainties</label>
+                    <textarea id="key-uncertainties" rows="4" placeholder="What are the major unknowns? What questions can't be answered today but will shape the future? These often become your sectors in Step 2."></textarea>
+                </div>
+
+                <div class="step-nav">
+                    <button class="btn-ghost" onclick="FAR.goToStep(0)">&larr; Back</button>
+                    <button class="btn-primary" onclick="FAR.goToStep(2)">Continue to Sectors &amp; Factors &rarr;</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== STEP 2: SECTORS & FACTORS ===================== -->
+        <section class="step-panel" data-step="2">
+            <div class="step-header">
+                <div class="step-badge">Step 2</div>
+                <h2>Construct the Sector Array</h2>
+            </div>
+            <div class="content-card">
+                <div class="info-block collapsible">
+                    <h3 class="collapsible-header">
+                        <span class="collapse-icon">&#9660;</span>
+                        About This Step
+                    </h3>
+                    <div class="collapsible-body">
+                        <p>In FAR, the future is characterized by a set of <span class="glossary-term" tabindex="0"><strong>sectors</strong><span class="glossary-tip">A major dimension or driving force shaping the future (e.g., Economy, Technology, Governance).</span></span> &mdash; the major dimensions or driving forces that shape the domain you're studying. Rhyne recommends <strong>6&ndash;7 primary sectors</strong>, identified by a memorable acronym (e.g., "ACTIVES" for Autonomy, Culture, Technology, Infrastructure, Values, Economy, Society) (Rhyne, 1995, p. 5).</p>
+                        <p>Each sector contains <span class="glossary-term" tabindex="0"><strong>factors</strong><span class="glossary-tip">A possible state a sector could take &mdash; one of several alternative futures within that dimension.</span></span> &mdash; the distinct possible future states that sector could take. Factors should be:</p>
+                        <ul>
+                            <li><strong>Mutually exclusive</strong> within their sector (only one can be true at a time)</li>
+                            <li><strong>Collectively comprehensive</strong> (covering the realistic range of possibilities)</li>
+                            <li><strong>Clearly distinguishable</strong> from each other</li>
+                        </ul>
+                        <p><span class="glossary-term" tabindex="0"><strong>Lewinian Factor Maps</strong><span class="glossary-tip">A spatial map where nearby factors are conceptually similar &mdash; drag factors closer if they represent similar possibilities.</span></span>: For each sector, you can position factors on a 2D adjacency map. Factors placed close together are conceptually "neighbors" &mdash; similar or adjacent possibilities. This follows Lewin's field theory where factors exist in a topological space (Rhyne, 1995, p. 7).</p>
+                        <p><strong>Guidelines:</strong></p>
+                        <ul>
+                            <li>Use <strong>6&ndash;7 sectors</strong> (Rhyne's recommendation for a primary array)</li>
+                            <li>Define <strong>3&ndash;5 factors</strong> per sector</li>
+                            <li>Create a <strong>memorable acronym</strong> from your sector initial letters</li>
+                            <li>The total configuration space = product of all factor counts</li>
+                        </ul>
+                        <p><em>"The minimum meaningful number of sectors is six... we recommend 6 or 7 primary sectors, identified by a mnemonic acronym."</em> &mdash; Rhyne, 1995</p>
+                    </div>
+                </div>
+
+                <div class="acronym-section">
+                    <div class="form-group" style="margin-bottom:8px">
+                        <label for="sector-acronym">Sector Array Acronym</label>
+                        <input type="text" id="sector-acronym" placeholder="e.g., ACTIVES, HASIKEP" class="input-md"
+                               style="text-transform:uppercase;font-weight:600;letter-spacing:2px">
+                    </div>
+                    <div id="sector-count-warning" class="sector-warning"></div>
+                </div>
+
+                <div id="sectors-container"></div>
+
+                <div class="add-sector-area">
+                    <button class="btn-secondary" id="btn-add-sector">+ Add Sector</button>
+                    <span class="config-count" id="config-count"></span>
+                </div>
+
+                <div class="step-nav">
+                    <button class="btn-ghost" onclick="FAR.goToStep(1)">&larr; Back</button>
+                    <button class="btn-primary" onclick="FAR.goToStep(3)">Continue to Filtering &rarr;</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== STEP 3: FILTERING ===================== -->
+        <section class="step-panel" data-step="3">
+            <div class="step-header">
+                <div class="step-badge">Step 3</div>
+                <h2>Filter the Field</h2>
+            </div>
+            <div class="content-card">
+                <!-- Filter 1: Pair-wise Assessment -->
+                <div class="filter-section">
+                    <h3 class="filter-title">Filter 1 — Cross-Compatibility Check <span class="glossary-term" tabindex="0">(CCM)<span class="glossary-tip">Cross-Consistency Matrix &mdash; a grid checking whether pairs of factors from different sectors can realistically coexist.</span></span></h3>
+                    <div class="info-block collapsible">
+                        <h3 class="collapsible-header">
+                            <span class="collapse-icon">&#9660;</span>
+                            About Filter 1
+                        </h3>
+                        <div class="collapsible-body">
+                            <p>The <strong>Cross-Consistency Matrix (CCM)</strong> is Rhyne's first filter. For every pair of factors from <em>different</em> sectors, ask the simple question:</p>
+                            <blockquote><em>"Can we think of a pattern within which these two factors might coexist?"</em> &mdash; Rhyne, 1995, p. 9</blockquote>
+                            <p>The answer is <strong>Yes</strong> or <strong>No</strong>. There is no middle ground in Rhyne's original formulation &mdash; if you can imagine <em>any</em> coherent pattern containing both factors, the answer is Yes. Only mark No for genuine incompatibilities.</p>
+                            <p>Each "No" pair eliminates every configuration containing that combination. You only need a manageable number of pair judgments (typically a few hundred), but each one has large leverage over the configuration space.</p>
+                            <p><em>"The question is whether any pattern can be imagined... not whether it is likely."</em> &mdash; Rhyne, 1995</p>
+                        </div>
+                    </div>
+
+                    <div class="ccm-controls">
+                        <div class="ccm-legend">
+                            <span class="legend-item"><span class="legend-color compatible"></span> Yes &mdash; can coexist</span>
+                            <span class="legend-item"><span class="legend-color incompatible"></span> No &mdash; cannot coexist</span>
+                        </div>
+                        <div class="ccm-stats" id="ccm-stats"></div>
+                        <div class="ccm-pair-selector">
+                            <label>Evaluate sector pairs:</label>
+                            <select id="ccm-pair-select"></select>
+                        </div>
+                    </div>
+
+                    <div id="ccm-container" class="ccm-container"></div>
+                </div>
+
+                <!-- Filter 1 Results -->
+                <div class="filter-section" id="filter1-results">
+                    <h3 class="filter-title">Filter 1 Results</h3>
+                    <div id="solution-space-summary" class="solution-summary"></div>
+                    <div id="solution-space-analysis" class="solution-analysis"></div>
+                    <div id="solution-space-table-container"></div>
+                </div>
+
+                <!-- Filter 2: Holistic Assessment -->
+                <div class="filter-section" id="filter2-section">
+                    <h3 class="filter-title">Filter 2 — Overall Plausibility Review</h3>
+                    <div class="info-block collapsible">
+                        <h3 class="collapsible-header">
+                            <span class="collapse-icon">&#9660;</span>
+                            About Filter 2
+                        </h3>
+                        <div class="collapsible-body">
+                            <p><strong>Filter 2</strong> is Rhyne's critical second pass. After pair-wise filtering removes configurations with any incompatible pair, each <em>surviving</em> configuration is assessed holistically:</p>
+                            <blockquote><em>"Does this entire configuration, taken as a whole, represent a coherent picture of a possible future world?"</em> &mdash; Rhyne, 1995, p. 11</blockquote>
+                            <p>A configuration may pass all pair-wise checks yet still feel incoherent when considered as a gestalt. This step catches those cases. It requires human judgment &mdash; there is no algorithm for wholeness.</p>
+                            <p>Configurations default to "Pass." Review each one and reject any that don't feel right as a <em>complete</em> world, even if every pair within them is individually plausible.</p>
+                        </div>
+                    </div>
+
+                    <div id="filter2-container"></div>
+                </div>
+
+                <!-- Final Results -->
+                <div class="filter-section" id="final-results-section">
+                    <h3 class="filter-title">Final Surviving Configurations</h3>
+                    <div id="final-summary" class="solution-summary"></div>
+                    <div id="final-table-container"></div>
+                </div>
+
+                <div class="step-nav">
+                    <button class="btn-ghost" onclick="FAR.goToStep(2)">&larr; Back</button>
+                    <button class="btn-primary" onclick="FAR.goToStep(4)">Compose Scenario Tree &rarr;</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== STEP 4: SCENARIO COMPOSITION ===================== -->
+        <section class="step-panel" data-step="4">
+            <div class="step-header">
+                <div class="step-badge">Step 4</div>
+                <h2>Scenario Composition &amp; Scenario Tree</h2>
+            </div>
+            <div class="content-card">
+                <div class="info-block collapsible">
+                    <h3 class="collapsible-header">
+                        <span class="collapse-icon">&#9660;</span>
+                        About This Step
+                    </h3>
+                    <div class="collapsible-body">
+                        <p>In Rhyne's FAR, scenario composition is the art of <strong>stringing individual configurations into temporal sequences</strong> &mdash; "scenario lines" that trace how the world might evolve from the present through successive future states (Rhyne, 1995, p. 14).</p>
+                        <p>The <span class="glossary-term" tabindex="0"><strong>Scenario Tree</strong><span class="glossary-tip">A branching timeline diagram showing how scenarios diverge from a shared present into different futures.</span></span> visualizes these scenario lines as a branching timeline flowing from the earliest period (bottom) to the latest (top). All lines share a common starting point &mdash; the present &mdash; and diverge through different futures. Named after the Faustian bargain &mdash; every choice closes some possibilities and opens others.</p>
+                        <p>Each configuration in a scenario line is scored on two dimensions:</p>
+                        <ul>
+                            <li><span class="glossary-term" tabindex="0"><strong>Commitment (F)</strong><span class="glossary-tip">How much this future narrows options through deliberate commitment (1=passive, 10=maximum commitment).</span></span> How much does this future narrow future possibilities? High Commitment = more committed, fewer options remaining</li>
+                            <li><span class="glossary-term" tabindex="0"><strong>Freedom (O)</strong><span class="glossary-tip">How much diversity and remaining possibility this future allows (1=locked-in, 10=maximum freedom).</span></span> How diverse and unconstrained is this future? High Freedom = more variability, more freedom of action</li>
+                        </ul>
+                        <p><strong>How to compose scenarios:</strong></p>
+                        <ol>
+                            <li>Create <strong>scenario lines</strong> &mdash; named temporal sequences of configurations</li>
+                            <li>Assign surviving configurations to scenario lines with <strong>time period labels</strong> (~5 year intervals)</li>
+                            <li>Score each configuration on <strong>Commitment</strong> and <strong>Freedom</strong> (1&ndash;10)</li>
+                            <li>Optionally <strong>reintroduce</strong> previously rejected configurations for scenario construction</li>
+                            <li>Write a <strong>narrative</strong> for each scenario line explaining the transitions</li>
+                        </ol>
+                        <p><em>"The tree is the structure on which we hang our stories."</em> &mdash; Rhyne, 1995</p>
+                    </div>
+                </div>
+
+                <!-- Scenario Line Builder -->
+                <div class="scenario-section">
+                    <h3 class="section-title">Scenario Lines</h3>
+                    <div class="scenario-controls">
+                        <button class="btn-secondary" id="btn-add-scenario-line">+ Add Scenario Line</button>
+                        <button class="btn-secondary" id="btn-reintroduce-configs" title="Bring back previously rejected configurations">Reintroduce Configs</button>
+                    </div>
+                    <div id="scenario-lines-container"></div>
+                </div>
+
+                <!-- Scenario Tree -->
+                <div class="scenario-section">
+                    <h3 class="section-title">Scenario Tree</h3>
+                    <div id="scenario-tree-canvas" class="tree-canvas"></div>
+                </div>
+
+                <!-- Narratives -->
+                <div class="scenario-section">
+                    <h3 class="section-title">Scenario Narratives</h3>
+                    <div class="info-block collapsible collapsed">
+                        <h3 class="collapsible-header">
+                            <span class="collapse-icon">&#9660;</span>
+                            Writing Good Narratives
+                        </h3>
+                        <div class="collapsible-body">
+                            <p>Each scenario line should have a narrative that follows the temporal sequence, explaining <em>how</em> and <em>why</em> the world transitions from one configuration to the next (Rhyne, 1995, p. 16).</p>
+                            <p>Good scenario narratives:</p>
+                            <ul>
+                                <li>Are written in <strong>present tense</strong> as if describing a world that already exists</li>
+                                <li>Explain the <strong>causal logic</strong> of each transition</li>
+                                <li>Include concrete <strong>details and examples</strong></li>
+                                <li>Address <strong>implications</strong> for your domain</li>
+                                <li>Are <strong>internally consistent</strong> with the factor values in each configuration</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div id="narratives-container"></div>
+                </div>
+
+                <div class="step-nav">
+                    <button class="btn-ghost" onclick="FAR.goToStep(3)">&larr; Back</button>
+                    <button class="btn-primary" onclick="FAR.goToStep(5)">Generate Report &rarr;</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== STEP 5: REPORT ===================== -->
+        <section class="step-panel" data-step="5">
+            <div class="step-header">
+                <div class="step-badge">Report</div>
+                <h2>Final Report</h2>
+            </div>
+            <div class="content-card">
+                <div class="info-block">
+                    <p>Your complete FAR analysis is summarized below. Review it, then export as PDF.</p>
+                </div>
+
+                <div class="report-controls">
+                    <button class="btn-primary btn-lg" id="btn-export-pdf">&#128196; Print / Save as PDF</button>
+                </div>
+
+                <div id="report-content" class="report-content"></div>
+            </div>
+        </section>
+    </div>
+
+    <script defer src="js/far-core.js?v=2"></script>
+    <script defer src="js/far-tree.js?v=2"></script>
+    <script defer src="js/far-ui.js?v=2"></script>
+    <script defer src="js/far-report.js?v=2"></script>
+    <script defer src="js/far-prompts.js?v=2"></script>
+    <script defer src="js/far-ai.js?v=2"></script>
+    <script defer src="js/far-sample.js?v=2"></script>
+    <script defer src="js/app.js?v=2"></script>
+</body>
+</html>
