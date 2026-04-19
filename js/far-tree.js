@@ -18,6 +18,7 @@ const FARTree = (() => {
     const NODE_LINE_HEIGHT = 13;
     const NODE_GAP_X = 16;
     const NODE_CORNER = 5;
+    const MAX_TERMINAL_NAME_W = 150;
     const FONT = 'DM Sans, system-ui, sans-serif';
     const FONT_DISPLAY = 'Outfit, system-ui, sans-serif';
 
@@ -51,6 +52,27 @@ const FARTree = (() => {
         }
         measureCtx.font = `${fontSize}px ${fontFamily}`;
         return measureCtx.measureText(text).width;
+    };
+
+    /** Wrap text into multiple lines that each fit within maxWidth.
+     *  Splits on whitespace; if a single token exceeds maxWidth it is
+     *  placed on its own line (and will cause the box to widen). */
+    const wrapText = (text, maxWidth, fontSize, fontFamily) => {
+        const tokens = (text || '').split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) return [''];
+        const lines = [];
+        let current = tokens[0];
+        for (let i = 1; i < tokens.length; i++) {
+            const candidate = current + ' ' + tokens[i];
+            if (measureText(candidate, fontSize, fontFamily) <= maxWidth) {
+                current = candidate;
+            } else {
+                lines.push(current);
+                current = tokens[i];
+            }
+        }
+        lines.push(current);
+        return lines;
     };
 
     /** Resolve factor list for a config key */
@@ -285,12 +307,23 @@ const FARTree = (() => {
 
         const periodOrder = bands.map(b => b.label);
 
-        /* 2. Build node map — key by band|configKey */
+        /* 2. Build node map.
+         *    Intermediate nodes are shared across scenarios (key = period|configKey).
+         *    Each scenario's final (endpoint) node is distinct — keyed per scenario
+         *    (period|configKey|#T<lineIndex>) — so that:
+         *      (a) every scenario has exactly one endpoint,
+         *      (b) no endpoint represents more than one scenario, and
+         *      (c) an endpoint never has outgoing edges into another endpoint. */
+        const makeKey = (period, configKey, li, isLast) =>
+            isLast ? `${period}|${configKey}|#T${li}` : `${period}|${configKey}`;
+
         const nodeMap = new Map();
         scenarioLines.forEach((line, li) => {
-            (line.configs || []).forEach(cfg => {
+            const cfgs = line.configs || [];
+            cfgs.forEach((cfg, ci) => {
                 const period = mapPeriod(cfg.periodLabel);
-                const key = period + '|' + cfg.configKey;
+                const isLast = ci === cfgs.length - 1;
+                const key = makeKey(period, cfg.configKey, li, isLast);
                 if (!nodeMap.has(key)) {
                     nodeMap.set(key, {
                         period,
@@ -301,6 +334,7 @@ const FARTree = (() => {
                         lines: [],
                         lineColors: [],
                         factors: resolveFactors(cfg.configKey),
+                        isTerminal: isLast,
                     });
                 }
                 const node = nodeMap.get(key);
@@ -311,17 +345,6 @@ const FARTree = (() => {
             });
         });
 
-        /* 3. Identify terminal nodes */
-        const terminalNodes = new Set();
-        scenarioLines.forEach(line => {
-            const cfgs = line.configs || [];
-            if (cfgs.length > 0) {
-                const last = cfgs[cfgs.length - 1];
-                const key = mapPeriod(last.periodLabel) + '|' + last.configKey;
-                terminalNodes.add(key);
-            }
-        });
-
         /* 4. Compute tight box sizes per node */
         const FONT_SIZE_NAME = 9;
         const FONT_SIZE_KEY = 8;
@@ -329,16 +352,19 @@ const FARTree = (() => {
         const twoLineH = NODE_PAD_Y * 2 + NODE_LINE_HEIGHT * 2 + 2;
 
         nodeMap.forEach(node => {
-            const nk = node.period + '|' + node.configKey;
-            const isTerminal = terminalNodes.has(nk);
+            const isTerminal = node.isTerminal;
             const keyW = measureText(node.configKey, FONT_SIZE_KEY, FONT);
 
             if (isTerminal) {
                 const scenarioNames = node.lines
                     .map(li => (scenarioLines[li] || {}).name || 'Unnamed').join(', ');
-                const nameW = measureText(scenarioNames, FONT_SIZE_NAME, FONT_DISPLAY);
-                node._boxW = Math.max(60, Math.max(nameW, keyW) + NODE_PAD_X * 2 + 4);
-                node._boxH = twoLineH;
+                const nameLines = wrapText(scenarioNames, MAX_TERMINAL_NAME_W,
+                                           FONT_SIZE_NAME, FONT_DISPLAY);
+                const maxNameW = nameLines.reduce(
+                    (m, l) => Math.max(m, measureText(l, FONT_SIZE_NAME, FONT_DISPLAY)), 0);
+                node._nameLines = nameLines;
+                node._boxW = Math.max(60, Math.max(maxNameW, keyW) + NODE_PAD_X * 2 + 4);
+                node._boxH = NODE_PAD_Y * 2 + NODE_LINE_HEIGHT * (nameLines.length + 1) + 2;
             } else {
                 node._boxW = Math.max(50, keyW + NODE_PAD_X * 2 + 4);
                 node._boxH = singleLineH;
@@ -360,9 +386,10 @@ const FARTree = (() => {
             for (let ci = 0; ci < cfgs.length - 1; ci++) {
                 const pFrom = mapPeriod(cfgs[ci].periodLabel);
                 const pTo   = mapPeriod(cfgs[ci + 1].periodLabel);
+                const toIsLast = ci + 1 === cfgs.length - 1;
                 edges.push({
-                    fromKey: pFrom + '|' + cfgs[ci].configKey,
-                    toKey:   pTo   + '|' + cfgs[ci + 1].configKey,
+                    fromKey: makeKey(pFrom, cfgs[ci].configKey, li, false),
+                    toKey:   makeKey(pTo,   cfgs[ci + 1].configKey, li, toIsLast),
                     lineIndex: li,
                     color: line.color || '#1a5f4a',
                     warningIndicator: cfgs[ci].warningIndicator || '',
@@ -370,27 +397,75 @@ const FARTree = (() => {
             }
         });
 
-        /* 7. Compute layout — auto-size to content */
-        const rowHeight = twoLineH + 28;
+        /* 7. Compute layout — spread across full width + barycenter ordering */
+        let maxBoxH = twoLineH;
+        nodeMap.forEach(n => { if (n._boxH > maxBoxH) maxBoxH = n._boxH; });
+        const rowHeight = maxBoxH + 28;
         let maxRowW = 0;
         rows.forEach(row => {
             const totalW = row.nodes.reduce((s, n) => s + n._boxW, 0) + Math.max(0, row.nodes.length - 1) * NODE_GAP_X;
             if (totalW > maxRowW) maxRowW = totalW;
         });
 
-        const contentW = Math.max(400, PAD_LEFT + maxRowW + PAD_RIGHT);
+        // Use the canvas container width as the layout target so rows can
+        // spread across the visible area instead of huddling in a narrow band.
+        const canvasW = canvas.clientWidth || 800;
+        const contentW = Math.max(canvasW, PAD_LEFT + maxRowW + PAD_RIGHT);
         const contentH = Math.max(300, PAD_TOP + rows.length * rowHeight + PAD_BOTTOM);
+        const usableW = contentW - PAD_LEFT - PAD_RIGHT;
 
-        rows.forEach((row, ri) => {
-            const cy = PAD_TOP + ri * rowHeight + rowHeight / 2;
-            const totalW = row.nodes.reduce((s, n) => s + n._boxW, 0) + Math.max(0, row.nodes.length - 1) * NODE_GAP_X;
-            let curX = PAD_LEFT + (contentW - PAD_LEFT - PAD_RIGHT - totalW) / 2;
+        // Tag every node with its map key so we can look up neighbors later.
+        nodeMap.forEach((node, key) => { node._key = key; });
+
+        // Spread a row across the full usable width: distribute any slack
+        // equally to the outer margins and the gaps between nodes.
+        const placeRow = (row) => {
+            const nNodes = row.nodes.length;
+            if (nNodes === 0) return;
+            const rowTotalW = row.nodes.reduce((s, n) => s + n._boxW, 0)
+                + Math.max(0, nNodes - 1) * NODE_GAP_X;
+            const slack = Math.max(0, usableW - rowTotalW);
+            const extra = slack / (nNodes + 1);
+            let curX = PAD_LEFT + extra;
             row.nodes.forEach(node => {
                 node.cx = curX + node._boxW / 2;
-                node.cy = cy;
-                curX += node._boxW + NODE_GAP_X;
+                curX += node._boxW + NODE_GAP_X + extra;
             });
+        };
+
+        // Initial y placement + x placement in insertion order.
+        rows.forEach((row, ri) => {
+            const cy = PAD_TOP + ri * rowHeight + rowHeight / 2;
+            row.nodes.forEach(n => { n.cy = cy; });
+            placeRow(row);
         });
+
+        // Barycenter reorder to minimise edge crossings between rows.
+        const neighbors = new Map();
+        edges.forEach(e => {
+            if (!neighbors.has(e.fromKey)) neighbors.set(e.fromKey, []);
+            if (!neighbors.has(e.toKey)) neighbors.set(e.toKey, []);
+            neighbors.get(e.fromKey).push(e.toKey);
+            neighbors.get(e.toKey).push(e.fromKey);
+        });
+
+        for (let iter = 0; iter < 6; iter++) {
+            const sweep = iter % 2 === 0 ? rows : rows.slice().reverse();
+            sweep.forEach(row => {
+                row.nodes.forEach(node => {
+                    const nbrs = neighbors.get(node._key) || [];
+                    if (nbrs.length === 0) { node._bary = node.cx; return; }
+                    let sum = 0, n = 0;
+                    nbrs.forEach(nk => {
+                        const nb = nodeMap.get(nk);
+                        if (nb) { sum += nb.cx; n++; }
+                    });
+                    node._bary = n > 0 ? sum / n : node.cx;
+                });
+                row.nodes.sort((a, b) => a._bary - b._bary);
+                placeRow(row);
+            });
+        }
 
         /* 8. Render */
         canvas.innerHTML = '';
@@ -415,6 +490,8 @@ const FARTree = (() => {
         // Defs: arrowheads
         const defs = svgEl('defs');
         const usedColors = new Set(edges.map(e => e.color));
+        // Grey is used whenever a transition is shared by multiple scenarios.
+        usedColors.add('#555');
         usedColors.forEach(color => {
             const marker = svgEl('marker', {
                 id: 'arrow-' + color.replace('#', ''),
@@ -455,7 +532,8 @@ const FARTree = (() => {
             }
         });
 
-        // (b) Edges
+        // (b) Edges.
+        // First group by exact (fromKey, toKey) — same as before.
         const edgeGroups = new Map();
         edges.forEach(e => {
             const gk = e.fromKey + '>' + e.toKey;
@@ -463,50 +541,118 @@ const FARTree = (() => {
             edgeGroups.get(gk).push(e);
         });
 
-        const edgeMarkers = [];
+        // Then merge edge-groups by SEMANTIC transition
+        //   (fromKey → toPeriod|toConfigKey).
+        // When multiple scenarios end at the same (period, configKey) but have
+        // been split into per-scenario terminal boxes, they produce distinct
+        // edge-groups that semantically describe the same transition. Merging
+        // them lets us draw a single trunk with short branches and a single
+        // warning marker, instead of overlapping near-duplicate edges.
+        const semanticGroups = new Map();
         edgeGroups.forEach(group => {
-            // Use the first edge for geometry; pick color from first line
-            const e = group[0];
-            const fromNode = nodeMap.get(e.fromKey);
-            const toNode = nodeMap.get(e.toKey);
+            const e0 = group[0];
+            const fromNode = nodeMap.get(e0.fromKey);
+            const toNode = nodeMap.get(e0.toKey);
             if (!fromNode || !toNode) return;
+            const sk = `${e0.fromKey}>>${toNode.period}|${toNode.configKey}`;
+            if (!semanticGroups.has(sk)) semanticGroups.set(sk, { fromNode, entries: [] });
+            semanticGroups.get(sk).entries.push({ group, toNode });
+        });
 
-            // If shared by multiple lines, use grey; otherwise use the line's color
-            const color = group.length > 1 ? '#555' : e.color;
+        const edgeMarkers = [];
+        semanticGroups.forEach(({ fromNode, entries }) => {
+            const allEdges = [];
+            const warnings = [];
+            entries.forEach(({ group }) => {
+                group.forEach(ge => {
+                    allEdges.push(ge);
+                    if (ge.warningIndicator && !warnings.includes(ge.warningIndicator)) {
+                        warnings.push(ge.warningIndicator);
+                    }
+                });
+            });
+            const lineCount = new Set(allEdges.map(ge => ge.lineIndex)).size;
+            const color = lineCount > 1 ? '#555' : allEdges[0].color;
+            const strokeW = lineCount > 1 ? '2.5' : '2';
+            const markerRef = `url(#arrow-${color.replace('#', '')})`;
 
             const x1 = fromNode.cx;
             const y1 = fromNode.cy - fromNode._boxH / 2;
-            const x2 = toNode.cx;
-            const y2 = toNode.cy + toNode._boxH / 2 + ARROW_SIZE;
 
-            const cy1 = y1 + (y2 - y1) * 0.4;
-            const cy2 = y2 - (y2 - y1) * 0.4;
-            svg.appendChild(svgEl('path', {
-                d: `M${x1},${y1} C${x1},${cy1} ${x2},${cy2} ${x2},${y2}`,
-                stroke: color,
-                'stroke-width': group.length > 1 ? '2.5' : '2',
-                fill: 'none',
-                opacity: '0.75',
-                'marker-end': `url(#arrow-${color.replace('#', '')})`,
-            }));
-
-            // Collect unique warning indicators from all edges in this group
-            const mx = 0.125 * x1 + 0.375 * x1 + 0.375 * x2 + 0.125 * x2;
-            const my = 0.125 * y1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * y2;
-
-            const warnings = [];
-            group.forEach(ge => {
-                if (ge.warningIndicator && !warnings.includes(ge.warningIndicator)) {
-                    warnings.push(ge.warningIndicator);
+            if (entries.length === 1) {
+                const toNode = entries[0].toNode;
+                const x2 = toNode.cx;
+                const y2 = toNode.cy + toNode._boxH / 2 + ARROW_SIZE;
+                const cy1 = y1 + (y2 - y1) * 0.4;
+                const cy2 = y2 - (y2 - y1) * 0.4;
+                svg.appendChild(svgEl('path', {
+                    d: `M${x1},${y1} C${x1},${cy1} ${x2},${cy2} ${x2},${y2}`,
+                    stroke: color,
+                    'stroke-width': strokeW,
+                    fill: 'none',
+                    opacity: '0.75',
+                    'marker-end': markerRef,
+                }));
+                if (warnings.length > 0) {
+                    const mx = 0.125 * x1 + 0.375 * x1 + 0.375 * x2 + 0.125 * x2;
+                    const my = 0.125 * y1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * y2;
+                    edgeMarkers.push({
+                        mx, my,
+                        text: warnings.join(' | '),
+                        type: 'warning',
+                        fromConfig: fromNode.configKey,
+                        toConfig: toNode.configKey,
+                    });
                 }
-            });
-            if (warnings.length > 0) {
-                edgeMarkers.push({ mx, my, text: warnings.join(' | '), type: 'warning' });
+            } else {
+                // Multiple terminal boxes representing the same (period, configKey).
+                // Draw one trunk from the source, then short branches into each
+                // target box. The warning marker sits on the trunk.
+                const targets = entries.map(en => ({
+                    x: en.toNode.cx,
+                    y: en.toNode.cy + en.toNode._boxH / 2 + ARROW_SIZE,
+                }));
+                const xMid = targets.reduce((s, t) => s + t.x, 0) / targets.length;
+                const yTarget = targets[0].y;
+                // Gather point sits between source and targets — closer to
+                // the targets so the fan-out stays short and readable.
+                const yGather = yTarget + Math.min(22, Math.max(0, (y1 - yTarget)) * 0.25);
+                const dy = yGather - y1;
+                const tcy1 = y1 + dy * 0.4;
+                const tcy2 = yGather - dy * 0.4;
+                svg.appendChild(svgEl('path', {
+                    d: `M${x1},${y1} C${x1},${tcy1} ${xMid},${tcy2} ${xMid},${yGather}`,
+                    stroke: color,
+                    'stroke-width': strokeW,
+                    fill: 'none',
+                    opacity: '0.75',
+                }));
+                targets.forEach(t => {
+                    svg.appendChild(svgEl('path', {
+                        d: `M${xMid},${yGather} L${t.x},${t.y}`,
+                        stroke: color,
+                        'stroke-width': strokeW,
+                        fill: 'none',
+                        opacity: '0.75',
+                        'marker-end': markerRef,
+                    }));
+                });
+                if (warnings.length > 0) {
+                    const mx = 0.125 * x1 + 0.375 * x1 + 0.375 * xMid + 0.125 * xMid;
+                    const my = 0.125 * y1 + 0.375 * tcy1 + 0.375 * tcy2 + 0.125 * yGather;
+                    edgeMarkers.push({
+                        mx, my,
+                        text: warnings.join(' | '),
+                        type: 'warning',
+                        fromConfig: fromNode.configKey,
+                        toConfig: entries[0].toNode.configKey,
+                    });
+                }
             }
         });
 
         // Render edge markers
-        edgeMarkers.forEach(({ mx, my, text, type }) => {
+        edgeMarkers.forEach(({ mx, my, text, type, fromConfig, toConfig }) => {
             const g = svgEl('g', { style: 'cursor:pointer' });
             const isWarning = type === 'warning';
             g.appendChild(svgEl('circle', {
@@ -529,8 +675,11 @@ const FARTree = (() => {
                 const canvasRect = canvas.getBoundingClientRect();
                 const tipX = evt.clientX - canvasRect.left;
                 const tipY = evt.clientY - canvasRect.top;
+                const transitionFoot = (fromConfig && toConfig)
+                    ? `<div style="margin-top:6px;font-size:10px;color:#888">${esc(fromConfig)} \u2192 ${esc(toConfig)}</div>`
+                    : '';
                 const tipHtml = isWarning
-                    ? `<div class="tree-tooltip-header" style="color:#c0392b">\u26a0 Warning Indicator</div><div class="tree-tooltip-meta">${esc(text)}</div>`
+                    ? `<div class="tree-tooltip-header" style="color:#c0392b">\u26a0 Warning Indicator</div><div class="tree-tooltip-meta">${esc(text)}</div>${transitionFoot}`
                     : `<div class="tree-tooltip-header" style="color:#2563eb">\u2192 Transition Trigger</div><div class="tree-tooltip-meta">${esc(text)}</div>`;
                 showEdgeTooltip(tipHtml, tipX, tipY, canvas);
             };
@@ -574,35 +723,33 @@ const FARTree = (() => {
                 });
             }
 
-            const nodeKey = node.period + '|' + configKey;
-            const isTerminal = terminalNodes.has(nodeKey);
-            const maxCharsKey = Math.floor((bw - NODE_PAD_X * 2) / 5);
-            const maxCharsName = Math.floor((bw - NODE_PAD_X * 2) / 5.2);
+            const isTerminal = node.isTerminal;
 
             if (isTerminal) {
-                const scenarioNames = lines
-                    .map(li => (scenarioLines[li] || {}).name || 'Unnamed').join(', ');
-                const nameText = svgEl('text', {
-                    x: cx, y: ry + NODE_PAD_Y + 10,
-                    'text-anchor': 'middle',
-                    fill: '#1a1a1a',
-                    'font-size': String(FONT_SIZE_NAME),
-                    'font-weight': '600',
-                    'font-family': FONT_DISPLAY,
-                    'pointer-events': 'none',
+                const nameLines = node._nameLines || [''];
+                nameLines.forEach((lineText, li) => {
+                    const t = svgEl('text', {
+                        x: cx, y: ry + NODE_PAD_Y + 10 + li * NODE_LINE_HEIGHT,
+                        'text-anchor': 'middle',
+                        fill: '#1a1a1a',
+                        'font-size': String(FONT_SIZE_NAME),
+                        'font-weight': '600',
+                        'font-family': FONT_DISPLAY,
+                        'pointer-events': 'none',
+                    });
+                    t.textContent = lineText;
+                    svg.appendChild(t);
                 });
-                nameText.textContent = abbreviate(scenarioNames, maxCharsName);
-                svg.appendChild(nameText);
 
                 const keyText = svgEl('text', {
-                    x: cx, y: ry + NODE_PAD_Y + 10 + NODE_LINE_HEIGHT,
+                    x: cx, y: ry + NODE_PAD_Y + 10 + nameLines.length * NODE_LINE_HEIGHT,
                     'text-anchor': 'middle',
                     fill: '#555',
                     'font-size': String(FONT_SIZE_KEY),
                     'font-family': FONT,
                     'pointer-events': 'none',
                 });
-                keyText.textContent = abbreviate(configKey, maxCharsKey);
+                keyText.textContent = configKey;
                 svg.appendChild(keyText);
             } else {
                 const keyText = svgEl('text', {
@@ -613,7 +760,7 @@ const FARTree = (() => {
                     'font-family': FONT,
                     'pointer-events': 'none',
                 });
-                keyText.textContent = abbreviate(configKey, maxCharsKey);
+                keyText.textContent = configKey;
                 svg.appendChild(keyText);
             }
 
@@ -634,7 +781,6 @@ const FARTree = (() => {
     /* ---- Legend ---- */
     const drawLegend = (svg, width, height, scenarioLines) => {
         if (scenarioLines.length === 0) return;
-        const legendX = PAD_LEFT + 10;
         const legendY = height - PAD_BOTTOM + 14;
 
         let maxLabelLen = 0;
@@ -649,6 +795,8 @@ const FARTree = (() => {
 
         const bgWidth = Math.min(width - PAD_LEFT - PAD_RIGHT, Math.min(scenarioLines.length, maxPerRow) * itemW + 16);
         const bgHeight = rows * 18 + 8;
+        // Center the legend horizontally within the drawing.
+        const legendX = (width - bgWidth) / 2 + 6;
         svg.appendChild(svgEl('rect', {
             x: legendX - 6, y: legendY - 5,
             width: bgWidth, height: bgHeight,
